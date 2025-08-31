@@ -192,6 +192,11 @@
       const tp1Price   = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
       const tp2Price   = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
 
+      // --- NEW: initial trailing stop prices per leg (broker-style) ---
+      // Many brokers set the first TS level at entry ± trailOffset and then trail as price moves favorably.
+      const trail1StopPrice = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
+      const trail2StopPrice = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
+
       // Position sizing: risk = (size * pointValue * stopDist)
       // => size = riskAmountTotal / (pointValue * stopDist)
       const denom = pointValue * stopDist;
@@ -227,7 +232,7 @@
               <p>Total Size: <b class="mono">${fmt(sizeTotal,4)}</b> lots</p>
             </div>
             <div>
-              <p>Stop Price: <b class="mono">${fmt(stopPrice,2)}</b></p>
+              <p><b>Static Stop (SL×ATR):</b> <span class="mono">${fmt(stopPrice,2)}</span></p>
               <p>TP1: <b class="mono">${fmt(tp1Price,2)}</b> (${fmt(tp1Mult,2)}×ATR)</p>
               <p>TP2: <b class="mono">${fmt(tp2Price,2)}</b> (${fmt(tp2Mult,2)}×ATR)</p>
             </div>
@@ -245,8 +250,9 @@
             </div>
             <div>
               <p>TP1 Price: <b class="mono">${fmt(tp1Price,2)}</b></p>
+              <p><b>Initial Trailing Stop:</b> <span class="mono">${fmt(trail1StopPrice,2)}</span></p>
               <p>Trailing Offset: <b>${fmt(trail1Off,2)}</b> (price units)</p>
-              <p class="muted">Attach trailing stop immediately at <b>${fmt(trail1Off,2)}</b> behind price and TP at ${fmt(tp1Price,2)}.</p>
+              <p class="muted">Attach trailing stop immediately at offset ${fmt(trail1Off,2)} and TP at ${fmt(tp1Price,2)}.</p>
             </div>
           </div>
         </div>
@@ -262,8 +268,9 @@
             </div>
             <div>
               <p>TP2 Price: <b class="mono">${fmt(tp2Price,2)}</b></p>
+              <p><b>Initial Trailing Stop:</b> <span class="mono">${fmt(trail2StopPrice,2)}</span></p>
               <p>Trailing Offset: <b>${fmt(trail2Off,2)}</b> (price units)</p>
-              <p class="muted">Attach trailing stop immediately at <b>${fmt(trail2Off,2)}</b> behind price and TP at ${fmt(tp2Price,2)}.</p>
+              <p class="muted">Attach trailing stop immediately at offset ${fmt(trail2Off,2)} and TP at ${fmt(tp2Price,2)}.</p>
             </div>
           </div>
         </div>
@@ -274,7 +281,7 @@
             <li>Place <b>two</b> trades sized as above (Leg 1 & Leg 2).</li>
             <li>Attach each trade’s <b>trailing stop on entry</b> using its offset (in price units).</li>
             <li>Set TP1/TP2 prices on each leg. Risk sums to ~${fmt(riskLeg1 + riskLeg2,2)}.</li>
-            <li>Point Value = P&L per 1.0 price move for 1 lot (set to match your broker spec).</li>
+            <li>Some brokers trail only after price moves in your favor—confirm platform behavior.</li>
           </ul>
         </div>
       `;
