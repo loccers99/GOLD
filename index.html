@@ -20,6 +20,7 @@
     .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-top:12px}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
     .ok{color:#059669}.warn{color:#b45309}.bad{color:#b91c1c}
+    pre{white-space:pre-wrap;word-break:break-word;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px}
   </style>
 </head>
 <body>
@@ -131,7 +132,6 @@
     }
 
     function riskFromScore(basePct, scoreAbs) {
-      // Bands: 1–3 → 0.5%, 4–7 → 1.0%, 8–10 → 1.25%, ≥11 → 1.5%
       if (scoreAbs >= 11) return 1.5;
       if (scoreAbs >= 8)  return 1.25;
       if (scoreAbs >= 4)  return 1.0;
@@ -142,7 +142,6 @@
     function fmt(v, d=2){ return isFinite(v) ? v.toFixed(d) : "—"; }
 
     function calculateTrade() {
-      // Inputs
       const entryPrice     = parseFloat(document.getElementById('entryPrice').value);
       const atr            = parseFloat(document.getElementById('atr').value);
       const accountBalance = parseFloat(document.getElementById('accountBalance').value);
@@ -157,11 +156,11 @@
       const tp1Mult  = parseFloat(document.getElementById('tp1Mult').value);
       const tp2Mult  = parseFloat(document.getElementById('tp2Mult').value);
 
-      const tp1Percent = parseFloat(document.getElementById('tp1Percent').value); // 0..100
-      const trail1Mult = parseFloat(document.getElementById('trail1Mult').value); // × ATR
-      const trail2Mult = parseFloat(document.getElementById('trail2Mult').value); // × ATR
+      const tp1Percent = parseFloat(document.getElementById('tp1Percent').value);
+      const trail1Mult = parseFloat(document.getElementById('trail1Mult').value);
+      const trail2Mult = parseFloat(document.getElementById('trail2Mult').value);
 
-      const baseRiskPct   = parseFloat(document.getElementById('riskPct').value); // %
+      const baseRiskPct   = parseFloat(document.getElementById('riskPct').value);
       const useScoreScale = document.getElementById('useScoreScale').value === "on";
       const score         = Math.abs(parseFloat(document.getElementById('score').value));
 
@@ -174,51 +173,53 @@
         return;
       }
 
-      // Risk percent (maybe scaled by score band)
       const bandRiskPct = useScoreScale ? riskFromScore(baseRiskPct, score) : baseRiskPct;
-      const riskPct = bandRiskPct; // in percent of equity
+      const riskPct = bandRiskPct;
       const riskAmountTotal = accountBalance * (riskPct / 100);
 
-      // Distances in price units
+      // Distances (price units)
       const stopDist  = atr * slMult;
       const tp1Dist   = atr * tp1Mult;
       const tp2Dist   = atr * tp2Mult;
       const trail1Off = atr * trail1Mult;
       const trail2Off = atr * trail2Mult;
 
-      // Prices
-      const isLong = (tradeDirection === 'long');
-      const stopPrice  = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);
-      const tp1Price   = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
-      const tp2Price   = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
+      // Prices (dir-aware)
+      const isLong   = (tradeDirection === 'long');
+      const stopPrice= isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);
+      const tp1Price = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
+      const tp2Price = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
 
-      // --- NEW: initial trailing stop prices per leg (broker-style) ---
-      // Many brokers set the first TS level at entry ± trailOffset and then trail as price moves favorably.
+      // Trailing STOP **prices to enter** (this is what you asked for)
       const trail1StopPrice = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
       const trail2StopPrice = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
 
-      // Position sizing: risk = (size * pointValue * stopDist)
-      // => size = riskAmountTotal / (pointValue * stopDist)
+      // Position sizing
       const denom = pointValue * stopDist;
       const rawSize = denom > 0 ? (riskAmountTotal / denom) : 0;
       const sizeTotal = roundToStep(rawSize, lotStep, minLot);
 
-      // Split into two trades
+      // Split
       const leg1Frac = tp1Percent / 100;
-      const leg2Frac = 1 - leg1Frac;
-
       const sizeLeg1 = roundToStep(sizeTotal * leg1Frac, lotStep, minLot);
-      const sizeLeg2 = roundToStep(Math.max(sizeTotal - sizeLeg1, 0), lotStep, minLot); // keep rounding sum honest
+      const sizeLeg2 = roundToStep(Math.max(sizeTotal - sizeLeg1, 0), lotStep, minLot);
 
-      // Risk per leg (approx): size * pointValue * stopDist
       const riskLeg1 = sizeLeg1 * pointValue * stopDist;
       const riskLeg2 = sizeLeg2 * pointValue * stopDist;
 
-      // Notional & margin (approx)
       const notional1 = sizeLeg1 * entryPrice;
       const notional2 = sizeLeg2 * entryPrice;
       const margin1   = leverage > 0 ? (notional1 / leverage) : 0;
       const margin2   = leverage > 0 ? (notional2 / leverage) : 0;
+
+      // Quick ticket (copy-paste friendly)
+      const ticket = [
+        `DIR: ${isLong ? 'LONG' : 'SHORT'}  | Entry ${fmt(entryPrice,2)}  | ATR ${fmt(atr,2)}`,
+        `Total size ${fmt(sizeTotal,4)} lots  | Total risk ${fmt(riskAmountTotal,2)} (${fmt(riskPct,2)}%)`,
+        `Leg1 ${fmt(sizeLeg1,4)} lots  TP1 ${fmt(tp1Price,2)}  TS(price) ${fmt(trail1StopPrice,2)}  TS(offset) ${fmt(trail1Off,2)}`,
+        `Leg2 ${fmt(sizeLeg2,4)} lots  TP2 ${fmt(tp2Price,2)}  TS(price) ${fmt(trail2StopPrice,2)}  TS(offset) ${fmt(trail2Off,2)}`,
+        `Static SL (for reference): ${fmt(stopPrice,2)}`
+      ].join('\n');
 
       // Render
       const html = `
@@ -250,9 +251,8 @@
             </div>
             <div>
               <p>TP1 Price: <b class="mono">${fmt(tp1Price,2)}</b></p>
-              <p><b>Initial Trailing Stop:</b> <span class="mono">${fmt(trail1StopPrice,2)}</span></p>
+              <p><b>Trailing Stop Price (enter this):</b> <span class="mono">${fmt(trail1StopPrice,2)}</span></p>
               <p>Trailing Offset: <b>${fmt(trail1Off,2)}</b> (price units)</p>
-              <p class="muted">Attach trailing stop immediately at offset ${fmt(trail1Off,2)} and TP at ${fmt(tp1Price,2)}.</p>
             </div>
           </div>
         </div>
@@ -268,21 +268,15 @@
             </div>
             <div>
               <p>TP2 Price: <b class="mono">${fmt(tp2Price,2)}</b></p>
-              <p><b>Initial Trailing Stop:</b> <span class="mono">${fmt(trail2StopPrice,2)}</span></p>
+              <p><b>Trailing Stop Price (enter this):</b> <span class="mono">${fmt(trail2StopPrice,2)}</span></p>
               <p>Trailing Offset: <b>${fmt(trail2Off,2)}</b> (price units)</p>
-              <p class="muted">Attach trailing stop immediately at offset ${fmt(trail2Off,2)} and TP at ${fmt(tp2Price,2)}.</p>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <h3>Broker Ticket Hints</h3>
-          <ul>
-            <li>Place <b>two</b> trades sized as above (Leg 1 & Leg 2).</li>
-            <li>Attach each trade’s <b>trailing stop on entry</b> using its offset (in price units).</li>
-            <li>Set TP1/TP2 prices on each leg. Risk sums to ~${fmt(riskLeg1 + riskLeg2,2)}.</li>
-            <li>Some brokers trail only after price moves in your favor—confirm platform behavior.</li>
-          </ul>
+          <h3>Broker Ticket (copy/paste)</h3>
+          <pre class="mono">${ticket}</pre>
         </div>
       `;
       document.getElementById('results').innerHTML = html;
@@ -298,3 +292,4 @@
   </script>
 </body>
 </html>
+
