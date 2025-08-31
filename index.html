@@ -8,18 +8,17 @@
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.35;margin:24px;color:#111}
     h2{margin:0 0 12px}
-    fieldset{border:1px solid #e5e7eb;border-radius:8px;margin:16px 0;padding:12px}
+    fieldset{border:1px solid #e5e7eb;border-radius:10px;margin:16px 0;padding:12px}
     legend{padding:0 6px;color:#374151}
     label{display:flex;justify-content:space-between;gap:12px;align-items:center;margin:6px 0}
-    input,select{padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;min-width:140px}
+    input,select{padding:6px 8px;border:1px solid #d1d5db;border-radius:8px;min-width:140px}
     .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
-    button{background:#111;color:#fff;border:0;border-radius:8px;padding:10px 14px;cursor:pointer}
+    button{background:#111;color:#fff;border:0;border-radius:10px;padding:10px 14px;cursor:pointer}
     button:disabled{opacity:.6;cursor:not-allowed}
     .muted{color:#6b7280;font-size:12px}
     .results{margin-top:16px}
-    .card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-top:12px}
+    .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-top:12px}
     .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
-    .ok{color:#059669}.warn{color:#b45309}.bad{color:#b91c1c}
     pre{white-space:pre-wrap;word-break:break-word;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px}
   </style>
 </head>
@@ -60,7 +59,7 @@
           <input type="number" id="minLot" step="0.0001" value="0.01" />
         </label>
       </div>
-      <p class="muted">Tip: If your broker pays/charges $X per $1 move per 1 lot, set <b>Point Value</b> = X. Your original calc used 1.</p>
+      <p class="muted">If your broker pays/charges $X per $1 move per 1 lot, set <b>Point Value</b> = X (default 1).</p>
     </fieldset>
 
     <fieldset>
@@ -80,7 +79,7 @@
         </label>
       </div>
       <div class="muted">
-        Bands (editable in code): 1–3 → 0.5%, 4–7 → 1.0%, 8–10 → 1.25%, ≥11 → 1.5%.
+        Bands (in code): 1–3 → 0.5%, 4–7 → 1.0%, 8–10 → 1.25%, ≥11 → 1.5%.
       </div>
     </fieldset>
 
@@ -112,7 +111,7 @@
           <input type="number" id="trail2Mult" step="0.1" value="1.2" />
         </label>
       </div>
-      <p class="muted">Broker plan: place two trades sized by the split. Attach each trade’s trailing stop at its own offset and TP at its own ATR multiple.</p>
+      <p class="muted">Broker: place two trades by the split. Tick “Trailing” and enter each leg’s stop price shown below.</p>
     </fieldset>
 
     <div style="display:flex;gap:10px;align-items:center;margin:12px 0">
@@ -185,40 +184,42 @@
       const trail2Off = atr * trail2Mult;
 
       // Prices (dir-aware)
-      const isLong   = (tradeDirection === 'long');
-      const stopPrice= isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);
-      const tp1Price = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
-      const tp2Price = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
+      const isLong     = (tradeDirection === 'long');
+      const stopPrice  = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);            // static reference only
+      const tp1Price   = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
+      const tp2Price   = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
 
-      // Trailing STOP **prices to enter** (this is what you asked for)
-      const trail1StopPrice = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
-      const trail2StopPrice = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
+      // *** Trailing stop PRICES to ENTER (this defines the trailing gap for your broker) ***
+      const leg1StopToEnter = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
+      const leg2StopToEnter = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
 
       // Position sizing
-      const denom = pointValue * stopDist;
+      const denom = pointValue * stopDist;                    // risk model uses static SL×ATR distance
       const rawSize = denom > 0 ? (riskAmountTotal / denom) : 0;
       const sizeTotal = roundToStep(rawSize, lotStep, minLot);
 
-      // Split
+      // Split & rounding
       const leg1Frac = tp1Percent / 100;
       const sizeLeg1 = roundToStep(sizeTotal * leg1Frac, lotStep, minLot);
       const sizeLeg2 = roundToStep(Math.max(sizeTotal - sizeLeg1, 0), lotStep, minLot);
 
+      // Risk per leg (approx)
       const riskLeg1 = sizeLeg1 * pointValue * stopDist;
       const riskLeg2 = sizeLeg2 * pointValue * stopDist;
 
+      // Notional & margin (approx)
       const notional1 = sizeLeg1 * entryPrice;
       const notional2 = sizeLeg2 * entryPrice;
       const margin1   = leverage > 0 ? (notional1 / leverage) : 0;
       const margin2   = leverage > 0 ? (notional2 / leverage) : 0;
 
-      // Quick ticket (copy-paste friendly)
+      // Quick ticket (copyable)
       const ticket = [
-        `DIR: ${isLong ? 'LONG' : 'SHORT'}  | Entry ${fmt(entryPrice,2)}  | ATR ${fmt(atr,2)}`,
-        `Total size ${fmt(sizeTotal,4)} lots  | Total risk ${fmt(riskAmountTotal,2)} (${fmt(riskPct,2)}%)`,
-        `Leg1 ${fmt(sizeLeg1,4)} lots  TP1 ${fmt(tp1Price,2)}  TS(price) ${fmt(trail1StopPrice,2)}  TS(offset) ${fmt(trail1Off,2)}`,
-        `Leg2 ${fmt(sizeLeg2,4)} lots  TP2 ${fmt(tp2Price,2)}  TS(price) ${fmt(trail2StopPrice,2)}  TS(offset) ${fmt(trail2Off,2)}`,
-        `Static SL (for reference): ${fmt(stopPrice,2)}`
+        `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt(entryPrice,2)} | ATR ${fmt(atr,2)}`,
+        `Size total ${fmt(sizeTotal,4)} lots | Risk ${fmt(riskAmountTotal,2)} (${fmt(riskPct,2)}%)`,
+        `Leg1 ${fmt(sizeLeg1,4)} lots | TP1 ${fmt(tp1Price,2)} | Trailing STOP (enter): ${fmt(leg1StopToEnter,2)}`,
+        `Leg2 ${fmt(sizeLeg2,4)} lots | TP2 ${fmt(tp2Price,2)} | Trailing STOP (enter): ${fmt(leg2StopToEnter,2)}`,
+        `(Ref) Static SL×ATR: ${fmt(stopPrice,2)}`
       ].join('\n');
 
       // Render
@@ -233,9 +234,10 @@
               <p>Total Size: <b class="mono">${fmt(sizeTotal,4)}</b> lots</p>
             </div>
             <div>
-              <p><b>Static Stop (SL×ATR):</b> <span class="mono">${fmt(stopPrice,2)}</span></p>
-              <p>TP1: <b class="mono">${fmt(tp1Price,2)}</b> (${fmt(tp1Mult,2)}×ATR)</p>
-              <p>TP2: <b class="mono">${fmt(tp2Price,2)}</b> (${fmt(tp2Mult,2)}×ATR)</p>
+              <p><b>Leg 1 – Trailing STOP to enter:</b> <span class="mono">${fmt(leg1StopToEnter,2)}</span></p>
+              <p><b>Leg 2 – Trailing STOP to enter:</b> <span class="mono">${fmt(leg2StopToEnter,2)}</span></p>
+              <p class="muted">(Ref) Static SL×ATR: <span class="mono">${fmt(stopPrice,2)}</span></p>
+              <p>TP1: <b class="mono">${fmt(tp1Price,2)}</b> &nbsp;|&nbsp; TP2: <b class="mono">${fmt(tp2Price,2)}</b></p>
             </div>
           </div>
         </div>
@@ -251,8 +253,7 @@
             </div>
             <div>
               <p>TP1 Price: <b class="mono">${fmt(tp1Price,2)}</b></p>
-              <p><b>Trailing Stop Price (enter this):</b> <span class="mono">${fmt(trail1StopPrice,2)}</span></p>
-              <p>Trailing Offset: <b>${fmt(trail1Off,2)}</b> (price units)</p>
+              <p><b>Trailing STOP to enter:</b> <span class="mono">${fmt(leg1StopToEnter,2)}</span></p>
             </div>
           </div>
         </div>
@@ -268,8 +269,7 @@
             </div>
             <div>
               <p>TP2 Price: <b class="mono">${fmt(tp2Price,2)}</b></p>
-              <p><b>Trailing Stop Price (enter this):</b> <span class="mono">${fmt(trail2StopPrice,2)}</span></p>
-              <p>Trailing Offset: <b>${fmt(trail2Off,2)}</b> (price units)</p>
+              <p><b>Trailing STOP to enter:</b> <span class="mono">${fmt(leg2StopToEnter,2)}</span></p>
             </div>
           </div>
         </div>
@@ -277,6 +277,7 @@
         <div class="card">
           <h3>Broker Ticket (copy/paste)</h3>
           <pre class="mono">${ticket}</pre>
+          <p class="muted">Most brokers trail from the distance defined by your initial stop. If your platform only trails once in profit, this price still serves as your initial protective stop.</p>
         </div>
       `;
       document.getElementById('results').innerHTML = html;
