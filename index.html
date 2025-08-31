@@ -86,7 +86,7 @@
     <fieldset>
       <legend>Stop & Targets (ATR multiples)</legend>
       <div class="row">
-        <label>Stop Multiplier (SL × ATR)
+        <label>Stop Multiplier (SL × ATR) — reference only
           <input type="number" id="slMult" step="0.1" value="1.5" />
         </label>
         <label>TP1 Multiplier (× ATR)
@@ -104,10 +104,10 @@
         <label>TP1 % of Position
           <input type="number" id="tp1Percent" step="1" value="60" />
         </label>
-        <label>Trail TP1? (offset × ATR)
+        <label>Trail TP1 (offset × ATR)
           <input type="number" id="trail1Mult" step="0.1" value="1.2" />
         </label>
-        <label>Trail TP2? (offset × ATR)
+        <label>Trail TP2 (offset × ATR)
           <input type="number" id="trail2Mult" step="0.1" value="1.2" />
         </label>
       </div>
@@ -172,40 +172,44 @@
         return;
       }
 
-      const bandRiskPct = useScoreScale ? riskFromScore(baseRiskPct, score) : baseRiskPct;
-      const riskPct = bandRiskPct;
+      // Risk percent (optionally scaled by score bands)
+      const bandRiskPct     = useScoreScale ? riskFromScore(baseRiskPct, score) : baseRiskPct;
+      const riskPct         = bandRiskPct;
       const riskAmountTotal = accountBalance * (riskPct / 100);
 
       // Distances (price units)
-      const stopDist  = atr * slMult;
+      const stopDist  = atr * slMult;       // reference only
       const tp1Dist   = atr * tp1Mult;
       const tp2Dist   = atr * tp2Mult;
-      const trail1Off = atr * trail1Mult;
-      const trail2Off = atr * trail2Mult;
+      const trail1Off = atr * trail1Mult;   // this defines trailing gap for leg 1
+      const trail2Off = atr * trail2Mult;   // trailing gap for leg 2
 
       // Prices (dir-aware)
       const isLong     = (tradeDirection === 'long');
-      const stopPrice  = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);            // static reference only
+      const stopPrice  = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);   // reference
       const tp1Price   = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
       const tp2Price   = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
 
-      // *** Trailing stop PRICES to ENTER (this defines the trailing gap for your broker) ***
+      // Trailing stop PRICES to ENTER (defines the broker's trailing gap)
       const leg1StopToEnter = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
       const leg2StopToEnter = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
 
-      // Position sizing
-      const denom = pointValue * stopDist;                    // risk model uses static SL×ATR distance
-      const rawSize = denom > 0 ? (riskAmountTotal / denom) : 0;
+      // --- Position sizing based on TRAILING gap(s) ---
+      const f = tp1Percent / 100;                           // fraction for leg 1
+      const riskDistCombined = (f * trail1Off) + ((1 - f) * trail2Off);
+
+      const rawSize  = (pointValue > 0 && riskDistCombined > 0)
+        ? (riskAmountTotal / (pointValue * riskDistCombined))
+        : 0;
       const sizeTotal = roundToStep(rawSize, lotStep, minLot);
 
       // Split & rounding
-      const leg1Frac = tp1Percent / 100;
-      const sizeLeg1 = roundToStep(sizeTotal * leg1Frac, lotStep, minLot);
+      const sizeLeg1 = roundToStep(sizeTotal * f, lotStep, minLot);
       const sizeLeg2 = roundToStep(Math.max(sizeTotal - sizeLeg1, 0), lotStep, minLot);
 
-      // Risk per leg (approx)
-      const riskLeg1 = sizeLeg1 * pointValue * stopDist;
-      const riskLeg2 = sizeLeg2 * pointValue * stopDist;
+      // Risk per leg (using each leg's trailing distance)
+      const riskLeg1 = sizeLeg1 * pointValue * trail1Off;
+      const riskLeg2 = sizeLeg2 * pointValue * trail2Off;
 
       // Notional & margin (approx)
       const notional1 = sizeLeg1 * entryPrice;
@@ -213,7 +217,7 @@
       const margin1   = leverage > 0 ? (notional1 / leverage) : 0;
       const margin2   = leverage > 0 ? (notional2 / leverage) : 0;
 
-      // Quick ticket (copyable)
+      // Quick broker ticket
       const ticket = [
         `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt(entryPrice,2)} | ATR ${fmt(atr,2)}`,
         `Size total ${fmt(sizeTotal,4)} lots | Risk ${fmt(riskAmountTotal,2)} (${fmt(riskPct,2)}%)`,
@@ -229,7 +233,7 @@
           <div class="row">
             <div>
               <p>Direction: <b>${isLong ? 'LONG' : 'SHORT'}</b></p>
-              <p>ATR: <b>${fmt(atr,2)}</b> | SL×ATR: <b>${fmt(slMult,2)}</b></p>
+              <p>ATR: <b>${fmt(atr,2)}</b></p>
               <p>Total Risk: <b>${fmt(riskAmountTotal,2)}</b> (${fmt(riskPct,2)}%)</p>
               <p>Total Size: <b class="mono">${fmt(sizeTotal,4)}</b> lots</p>
             </div>
@@ -277,7 +281,7 @@
         <div class="card">
           <h3>Broker Ticket (copy/paste)</h3>
           <pre class="mono">${ticket}</pre>
-          <p class="muted">Most brokers trail from the distance defined by your initial stop. If your platform only trails once in profit, this price still serves as your initial protective stop.</p>
+          <p class="muted">Most brokers trail from the initial stop distance you set here. If your platform trails only after price is in profit, these prices still serve as initial protective stops.</p>
         </div>
       `;
       document.getElementById('results').innerHTML = html;
@@ -293,4 +297,5 @@
   </script>
 </body>
 </html>
+
 
