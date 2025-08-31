@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gold Trade Calculator — Split & Trailing</title>
+  <title>Gold Trade Calculator — Split TP & Trailing</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.35;margin:24px;color:#111}
     h2{margin:0 0 12px}
@@ -111,7 +111,7 @@
           <input type="number" id="trail2Mult" step="0.1" value="1.2" />
         </label>
       </div>
-      <p class="muted">Broker: place two trades by the split. Tick “Trailing” and enter each leg’s stop price shown below.</p>
+      <p class="muted">Broker: place two trades by the split. Tick “Trailing” and enter each leg’s SL price shown below.</p>
     </fieldset>
 
     <div style="display:flex;gap:10px;align-items:center;margin:12px 0">
@@ -129,7 +129,6 @@
       const rounded = Math.round(x / step) * step;
       return Math.max(min, rounded);
     }
-
     function riskFromScore(basePct, scoreAbs) {
       if (scoreAbs >= 11) return 1.5;
       if (scoreAbs >= 8)  return 1.25;
@@ -137,7 +136,6 @@
       if (scoreAbs >= 1)  return 0.5;
       return 0.5;
     }
-
     function fmt(v, d=2){ return isFinite(v) ? v.toFixed(d) : "—"; }
 
     function calculateTrade() {
@@ -172,33 +170,31 @@
         return;
       }
 
-      // Risk percent (optionally scaled by score bands)
-      const bandRiskPct     = useScoreScale ? riskFromScore(baseRiskPct, score) : baseRiskPct;
-      const riskPct         = bandRiskPct;
+      // Risk % (optionally scaled)
+      const riskPct = useScoreScale ? riskFromScore(baseRiskPct, score) : baseRiskPct;
       const riskAmountTotal = accountBalance * (riskPct / 100);
 
       // Distances (price units)
-      const stopDist  = atr * slMult;       // reference only
+      const stopDist  = atr * slMult;             // ref only
       const tp1Dist   = atr * tp1Mult;
       const tp2Dist   = atr * tp2Mult;
-      const trail1Off = atr * trail1Mult;   // this defines trailing gap for leg 1
-      const trail2Off = atr * trail2Mult;   // trailing gap for leg 2
+      const trail1Off = atr * trail1Mult;         // trailing gap L1
+      const trail2Off = atr * trail2Mult;         // trailing gap L2
 
-      // Prices (dir-aware)
-      const isLong     = (tradeDirection === 'long');
-      const stopPrice  = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);   // reference
-      const tp1Price   = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
-      const tp2Price   = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
+      // Prices
+      const isLong = (tradeDirection === 'long');
+      const stopPriceRef = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist); // reference
+      const tp1Price     = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
+      const tp2Price     = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
 
-      // Trailing stop PRICES to ENTER (defines the broker's trailing gap)
-      const leg1StopToEnter = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
-      const leg2StopToEnter = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
+      // SL price (with trailing offset) — this is what you ENTER at the broker with "Trailing" ticked
+      const leg1SLprice = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
+      const leg2SLprice = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
 
-      // --- Position sizing based on TRAILING gap(s) ---
-      const f = tp1Percent / 100;                           // fraction for leg 1
+      // --- Size using trailing gaps (matches true broker risk) ---
+      const f = tp1Percent / 100; // split fraction
       const riskDistCombined = (f * trail1Off) + ((1 - f) * trail2Off);
-
-      const rawSize  = (pointValue > 0 && riskDistCombined > 0)
+      const rawSize = (pointValue > 0 && riskDistCombined > 0)
         ? (riskAmountTotal / (pointValue * riskDistCombined))
         : 0;
       const sizeTotal = roundToStep(rawSize, lotStep, minLot);
@@ -207,7 +203,7 @@
       const sizeLeg1 = roundToStep(sizeTotal * f, lotStep, minLot);
       const sizeLeg2 = roundToStep(Math.max(sizeTotal - sizeLeg1, 0), lotStep, minLot);
 
-      // Risk per leg (using each leg's trailing distance)
+      // Risk per leg (using each leg’s trailing gap)
       const riskLeg1 = sizeLeg1 * pointValue * trail1Off;
       const riskLeg2 = sizeLeg2 * pointValue * trail2Off;
 
@@ -217,13 +213,13 @@
       const margin1   = leverage > 0 ? (notional1 / leverage) : 0;
       const margin2   = leverage > 0 ? (notional2 / leverage) : 0;
 
-      // Quick broker ticket
+      // Copyable broker ticket
       const ticket = [
         `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt(entryPrice,2)} | ATR ${fmt(atr,2)}`,
         `Size total ${fmt(sizeTotal,4)} lots | Risk ${fmt(riskAmountTotal,2)} (${fmt(riskPct,2)}%)`,
-        `Leg1 ${fmt(sizeLeg1,4)} lots | TP1 ${fmt(tp1Price,2)} | Trailing STOP (enter): ${fmt(leg1StopToEnter,2)}`,
-        `Leg2 ${fmt(sizeLeg2,4)} lots | TP2 ${fmt(tp2Price,2)} | Trailing STOP (enter): ${fmt(leg2StopToEnter,2)}`,
-        `(Ref) Static SL×ATR: ${fmt(stopPrice,2)}`
+        `Leg1 ${fmt(sizeLeg1,4)} lots | TP1 ${fmt(tp1Price,2)} | SL (with trailing offset): ${fmt(leg1SLprice,2)}`,
+        `Leg2 ${fmt(sizeLeg2,4)} lots | TP2 ${fmt(tp2Price,2)} | SL (with trailing offset): ${fmt(leg2SLprice,2)}`,
+        `(Ref) Static SL×ATR: ${fmt(stopPriceRef,2)}`
       ].join('\n');
 
       // Render
@@ -238,9 +234,9 @@
               <p>Total Size: <b class="mono">${fmt(sizeTotal,4)}</b> lots</p>
             </div>
             <div>
-              <p><b>Leg 1 – Trailing STOP to enter:</b> <span class="mono">${fmt(leg1StopToEnter,2)}</span></p>
-              <p><b>Leg 2 – Trailing STOP to enter:</b> <span class="mono">${fmt(leg2StopToEnter,2)}</span></p>
-              <p class="muted">(Ref) Static SL×ATR: <span class="mono">${fmt(stopPrice,2)}</span></p>
+              <p><b>Leg 1 — SL price (with trailing offset):</b> <span class="mono">${fmt(leg1SLprice,2)}</span></p>
+              <p><b>Leg 2 — SL price (with trailing offset):</b> <span class="mono">${fmt(leg2SLprice,2)}</span></p>
+              <p class="muted">(Ref) Static SL×ATR: <span class="mono">${fmt(stopPriceRef,2)}</span></p>
               <p>TP1: <b class="mono">${fmt(tp1Price,2)}</b> &nbsp;|&nbsp; TP2: <b class="mono">${fmt(tp2Price,2)}</b></p>
             </div>
           </div>
@@ -257,7 +253,7 @@
             </div>
             <div>
               <p>TP1 Price: <b class="mono">${fmt(tp1Price,2)}</b></p>
-              <p><b>Trailing STOP to enter:</b> <span class="mono">${fmt(leg1StopToEnter,2)}</span></p>
+              <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt(leg1SLprice,2)}</span></p>
             </div>
           </div>
         </div>
@@ -273,7 +269,7 @@
             </div>
             <div>
               <p>TP2 Price: <b class="mono">${fmt(tp2Price,2)}</b></p>
-              <p><b>Trailing STOP to enter:</b> <span class="mono">${fmt(leg2StopToEnter,2)}</span></p>
+              <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt(leg2SLprice,2)}</span></p>
             </div>
           </div>
         </div>
@@ -281,7 +277,7 @@
         <div class="card">
           <h3>Broker Ticket (copy/paste)</h3>
           <pre class="mono">${ticket}</pre>
-          <p class="muted">Most brokers trail from the initial stop distance you set here. If your platform trails only after price is in profit, these prices still serve as initial protective stops.</p>
+          <p class="muted">Most platforms trail from the distance defined by this initial SL price. If your platform trails only after the trade is in profit, these prices still serve as your protective stops.</p>
         </div>
       `;
       document.getElementById('results').innerHTML = html;
@@ -297,6 +293,7 @@
   </script>
 </body>
 </html>
+
 
 
 
