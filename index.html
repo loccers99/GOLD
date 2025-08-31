@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gold Trade Calculator 10:30 - 15:15 — Split & Trailing</title>
+  <title>Gold Trade Calculator — Split & Trailing</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.35;margin:24px;color:#111}
     h2{margin:0 0 12px}
@@ -23,7 +23,7 @@
   </style>
 </head>
 <body>
-  <h2>Gold Trade Calculator — Split TP & Trailing</h2>
+  <h2>Gold Trade Calculator —10:30 to 15:15 Split TP & Trailing</h2>
 
   <form id="tradeForm" onsubmit="event.preventDefault();calculateTrade();">
     <fieldset>
@@ -90,10 +90,10 @@
           <input type="number" id="slMult" step="0.1" value="1.5" />
         </label>
         <label>TP1 Multiplier (× ATR)
-          <input type="number" id="tp1Mult" step="0.1" value="1.0" />
+          <input type="number" id="tp1Mult" step="0.1" value="1.1" />
         </label>
         <label>TP2 Multiplier (× ATR)
-          <input type="number" id="tp2Mult" step="0.1" value="2.5" />
+          <input type="number" id="tp2Mult" step="0.1" value="2.0" />
         </label>
       </div>
     </fieldset>
@@ -102,10 +102,10 @@
       <legend>Split & Trailing</legend>
       <div class="row">
         <label>TP1 % of Position
-          <input type="number" id="tp1Percent" step="1" value="50" />
+          <input type="number" id="tp1Percent" step="1" value="60" />
         </label>
         <label>Trail TP1? (offset × ATR)
-          <input type="number" id="trail1Mult" step="0.1" value="0.8" />
+          <input type="number" id="trail1Mult" step="0.1" value="1.2" />
         </label>
         <label>Trail TP2? (offset × ATR)
           <input type="number" id="trail2Mult" step="0.1" value="1.2" />
