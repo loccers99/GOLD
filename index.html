@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gold Trade Calculator — Split TP & Trailing</title>
+  <title>Gold Trade Calculator — Standard SL/TP (No Offsets)</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.35;margin:24px;color:#111}
     h2{margin:0 0 12px}
@@ -23,7 +23,7 @@
   </style>
 </head>
 <body>
-  <h2>Gold Trade Calculator —10:30 to 13:30 Split TP & Trailing</h2>
+  <h2>Gold Trade Calculator — 10:30 to 13:30 (Standard SL/TP)</h2>
 
   <form id="tradeForm" onsubmit="event.preventDefault();calculateTrade();">
     <fieldset>
@@ -86,20 +86,28 @@
     <fieldset>
       <legend>Stop & Targets (ATR multiples)</legend>
       <div class="row">
-        <label>Stop Multiplier (SL × ATR) — reference only
+        <label>Stop Multiplier (SL × ATR)
           <input type="number" id="slMult" step="0.1" value="1.5" />
         </label>
+
+        <!-- Partial TP mode uses TP1 & TP2 multipliers -->
         <label id="group-tp1mult">TP1 Multiplier (× ATR)
           <input type="number" id="tp1Mult" step="0.1" value="1.0" />
         </label>
         <label id="group-tp2mult">TP2 Multiplier (× ATR)
           <input type="number" id="tp2Mult" step="0.1" value="2.0" />
         </label>
+
+        <!-- Single mode has its own TP multiplier -->
+        <label id="group-singleTPMult">Single TP Multiplier (× ATR)
+          <input type="number" id="singleTpMult" step="0.1" value="2.0" />
+        </label>
       </div>
+      <p class="muted">This calculator uses a <b>static stop distance</b> (SL × ATR) for position sizing. No trailing/offsets are used.</p>
     </fieldset>
 
     <fieldset>
-      <legend>Split & Trailing</legend>
+      <legend>Execution Mode</legend>
       <div class="row">
         <label>Partial TP
           <select id="partialTP" onchange="updateModeUI()">
@@ -111,27 +119,9 @@
         <label id="group-tp1percent">TP1 % of Position
           <input type="number" id="tp1Percent" step="1" value="60" />
         </label>
-
-        <label id="group-trail1mult">Trail TP1 (offset × ATR)
-          <input type="number" id="trail1Mult" step="0.1" value="0.0" />
-        </label>
-
-        <label id="group-trail2mult">Trail TP2 (offset × ATR)
-          <input type="number" id="trail2Mult" step="0.1" value="1.2" />
-        </label>
-
-        <!-- Single-mode only -->
-        <label id="group-singleTPMult">Single TP Multiplier (× ATR)
-          <input type="number" id="singleTpMult" step="0.1" value="2.0" />
-        </label>
-
-        <label id="group-singleTrailMult">Single Trail (offset × ATR)
-          <input type="number" id="singleTrailMult" step="0.1" value="1.2" />
-        </label>
       </div>
-
-      <p id="note-split" class="muted">Broker: place two trades by the split. Tick “Trailing” and enter each leg’s SL price shown below.</p>
-      <p id="note-single" class="muted" style="display:none;">Broker: place a single trade. Tick “Trailing” and enter the SL shown below. TP uses the Single TP Multiplier.</p>
+      <p id="note-split" class="muted">Partial TP: calculator shows <b>Standard SL</b>, <b>TP1</b>, and <b>TP2</b>. Sizing uses static SL × ATR.</p>
+      <p id="note-single" class="muted" style="display:none;">Single: calculator shows <b>Standard SL</b> and <b>Standard TP</b> (from Single TP Multiplier). Sizing uses static SL × ATR.</p>
     </fieldset>
 
     <div style="display:flex;gap:10px;align-items:center;margin:12px 0">
@@ -144,6 +134,7 @@
   <div class="results" id="results"></div>
 
   <script>
+    // --- Utilities ---
     function roundToStep(x, step, min) {
       if (!isFinite(x)) return 0;
       const rounded = Math.round(x / step) * step;
@@ -156,31 +147,30 @@
       if (scoreAbs >= 1)  return 0.5;
       return 0.5;
     }
-    // Helpers: 2dp default, plus explicit 2dp/3dp wrappers
     function fmt(v, d=2){ return isFinite(v) ? v.toFixed(d) : "—"; }
     const fmt2 = (v)=>fmt(v,2);
     const fmt3 = (v)=>fmt(v,3);
 
-    // Show/hide groups reliably by id
+    // --- UI toggles ---
     function setDisplay(id, show){ const el = document.getElementById(id); if(el){ el.style.display = show ? '' : 'none'; } }
     function updateModeUI(){
       const partial = document.getElementById('partialTP')?.value || 'on';
       const isSplit = (partial === 'on');
 
-      // Split-only fields
+      // Show Split fields in Partial mode
       setDisplay('group-tp1percent', isSplit);
-      setDisplay('group-trail1mult', isSplit);
+      setDisplay('group-tp1mult',    isSplit);
+      setDisplay('group-tp2mult',    isSplit);
 
-      // Single-only fields
+      // Show Single TP Mult only in Single mode
       setDisplay('group-singleTPMult', !isSplit);
-      setDisplay('group-singleTrailMult', !isSplit);
 
-      // Notes
-      setDisplay('note-split', isSplit);
+      setDisplay('note-split',  isSplit);
       setDisplay('note-single', !isSplit);
     }
     document.addEventListener('DOMContentLoaded', updateModeUI);
 
+    // --- Core calc ---
     function calculateTrade() {
       const entryPrice     = parseFloat(document.getElementById('entryPrice').value);
       const atr            = parseFloat(document.getElementById('atr').value);
@@ -192,22 +182,20 @@
       const lotStep    = parseFloat(document.getElementById('lotStep').value   || "0.01");
       const minLot     = parseFloat(document.getElementById('minLot').value    || "0.01");
 
+      const partialTP = (document.getElementById('partialTP')?.value || 'on'); // 'on' | 'off'
+
       const slMult   = parseFloat(document.getElementById('slMult').value);
       const tp1Mult  = parseFloat(document.getElementById('tp1Mult').value);
       const tp2Mult  = parseFloat(document.getElementById('tp2Mult').value);
+      const singleTpMult = parseFloat(document.getElementById('singleTpMult').value);
 
-      const partialTP = (document.getElementById('partialTP')?.value || 'on'); // 'on' | 'off'
       const tp1Percent = parseFloat(document.getElementById('tp1Percent').value);
-      const trail1Mult = parseFloat(document.getElementById('trail1Mult').value);
-      const trail2Mult = parseFloat(document.getElementById('trail2Mult').value);
-
-      const singleTpMult     = parseFloat(document.getElementById('singleTpMult').value);
-      const singleTrailMult  = parseFloat(document.getElementById('singleTrailMult').value);
 
       const baseRiskPct   = parseFloat(document.getElementById('riskPct').value);
       const useScoreScale = document.getElementById('useScoreScale').value === "on";
       const score         = Math.abs(parseFloat(document.getElementById('score').value));
 
+      // Basic validation
       if ([entryPrice, atr, accountBalance, leverage].some(v => !isFinite(v) || v <= 0)){
         document.getElementById('results').innerHTML = '<p class="bad">Please fill all required inputs with valid numbers &gt; 0.</p>';
         return;
@@ -223,48 +211,42 @@
       const riskPct = useScoreScale ? riskFromScore(baseRiskPct, score) : baseRiskPct;
       const riskAmountTotal = accountBalance * (riskPct / 100);
 
-      // Distances (price units)
-      const stopDist      = atr * slMult;           // reference only
-      const tp1Dist       = atr * tp1Mult;
-      const tp2Dist       = atr * tp2Mult;
-      const trail1Off     = atr * trail1Mult;       // trailing gap L1
-      const trail2Off     = atr * trail2Mult;       // trailing gap L2
-      const singleTpDist  = atr * singleTpMult;
-      const singleTrailOff= atr * singleTrailMult;
+      // Distances (price units) — STATIC ONLY
+      const stopDist     = atr * slMult;
+      const tp1Dist      = atr * tp1Mult;
+      const tp2Dist      = atr * tp2Mult;
+      const singleTpDist = atr * singleTpMult;
 
-      // Prices
-      const isLong = (tradeDirection === 'long');
-      const stopPriceRef = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist); // reference
+      const isLong       = (tradeDirection === 'long');
+
+      // Standard SL/TP prices (3dp)
+      const stopPrice    = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);
       const tp1Price     = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
       const tp2Price     = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
       const singleTP     = isLong ? (entryPrice + singleTpDist) : (entryPrice - singleTpDist);
 
-      // SL price (with trailing offset) — what you ENTER at the broker with "Trailing" ticked
-      const leg1SLprice  = isLong ? (entryPrice - trail1Off)    : (entryPrice + trail1Off);
-      const leg2SLprice  = isLong ? (entryPrice - trail2Off)    : (entryPrice + trail2Off);
-      const singleSL     = isLong ? (entryPrice - singleTrailOff): (entryPrice + singleTrailOff);
+      // --- Sizing uses the static stop distance only ---
+      if (!(pointValue > 0 && stopDist > 0)) {
+        document.getElementById('results').innerHTML = '<p class="bad">Invalid sizing inputs. Ensure Point Value &gt; 0 and SL × ATR &gt; 0.</p>';
+        return;
+      }
+      const rawSize  = riskAmountTotal / (pointValue * stopDist);
+      const sizeTot  = roundToStep(rawSize, lotStep, minLot);
 
-      let html = '';
+      // Common values
+      const notionalTot = sizeTot * entryPrice;
+      const marginTot   = leverage > 0 ? (notionalTot / leverage) : 0;
+      const riskTot     = sizeTot * pointValue * stopDist;
+
       let ticket = '';
+      let html   = '';
 
       if (partialTP === 'off') {
-        // === SINGLE MODE ===
-        if (!(pointValue > 0 && singleTrailOff > 0)) {
-          document.getElementById('results').innerHTML = '<p class="bad">Single mode requires Single Trail (offset × ATR) &gt; 0 and Point Value &gt; 0.</p>';
-          return;
-        }
-        const rawSize  = riskAmountTotal / (pointValue * singleTrailOff);
-        const size     = roundToStep(rawSize, lotStep, minLot);
-
-        const notional = size * entryPrice;
-        const margin   = leverage > 0 ? (notional / leverage) : 0;
-        const riskPos  = size * pointValue * singleTrailOff;
-
+        // ============== SINGLE MODE (no split) ==============
         ticket = [
           `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt3(entryPrice)} | ATR ${fmt3(atr)}`,
-          `Size ${fmt(size,4)} lots | Risk ${fmt2(riskAmountTotal)} (${fmt2(riskPct)}%)`,
-          `TP ${fmt2(singleTP)} | SL (with trailing offset): ${fmt2(singleSL)}`,
-          `(Ref) Static SL×ATR: ${fmt2(stopPriceRef)}`
+          `Size ${fmt(sizeTot,4)} lots | Risk ${fmt2(riskAmountTotal)} (${fmt2(riskPct)}%)`,
+          `Standard SL: ${fmt3(stopPrice)} | Standard TP: ${fmt3(singleTP)}`
         ].join('\n');
 
         html = `
@@ -275,12 +257,11 @@
                 <p>Direction: <b>${isLong ? 'LONG' : 'SHORT'}</b></p>
                 <p>ATR: <b>${fmt3(atr)}</b></p>
                 <p>Total Risk: <b>${fmt2(riskAmountTotal)}</b> (${fmt2(riskPct)}%)</p>
-                <p>Total Size: <b class="mono">${fmt(size,4)}</b> lots</p>
+                <p>Total Size: <b class="mono">${fmt(sizeTot,4)}</b> lots</p>
               </div>
               <div>
-                <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt2(singleSL)}</span></p>
-                <p class="muted">(Ref) Static SL×ATR: <span class="mono">${fmt2(stopPriceRef)}</span></p>
-                <p>TP: <b class="mono">${fmt2(singleTP)}</b></p>
+                <p><b>Standard SL price:</b> <span class="mono">${fmt3(stopPrice)}</span></p>
+                <p><b>Standard TP price:</b> <span class="mono">${fmt3(singleTP)}</span></p>
               </div>
             </div>
           </div>
@@ -289,14 +270,14 @@
             <h3>Position</h3>
             <div class="row">
               <div>
-                <p>Size: <b class="mono">${fmt(size,4)}</b> lots</p>
-                <p>Risk (approx): <b>${fmt2(riskPos)}</b></p>
-                <p>Notional: <b>${fmt2(notional)}</b></p>
-                <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt2(margin)}</b></p>
+                <p>Notional: <b>${fmt2(notionalTot)}</b></p>
+                <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt2(marginTot)}</b></p>
+                <p>Risk (approx): <b>${fmt2(riskTot)}</b></p>
               </div>
               <div>
-                <p>TP Price: <b class="mono">${fmt2(singleTP)}</b></p>
-                <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt2(singleSL)}</span></p>
+                <p>Entry: <b class="mono">${fmt3(entryPrice)}</b></p>
+                <p>SL: <b class="mono">${fmt3(stopPrice)}</b></p>
+                <p>TP: <b class="mono">${fmt3(singleTP)}</b></p>
               </div>
             </div>
           </div>
@@ -304,27 +285,19 @@
           <div class="card">
             <h3>Broker Ticket (copy/paste)</h3>
             <pre class="mono">${ticket}</pre>
-            <p class="muted">Single mode uses the Single Trail offset for initial risk and the Single TP multiplier for the target.</p>
+            <p class="muted">Use your broker's standard trailing feature if desired; this calculator sizes from static SL × ATR only.</p>
           </div>
         `;
         document.getElementById('results').innerHTML = html;
 
       } else {
-        // === SPLIT MODE ===
-        const f = tp1Percent / 100; // split fraction
-        const riskDistCombined = (f * trail1Off) + ((1 - f) * trail2Off);
-        if (!(pointValue > 0 && riskDistCombined > 0)) {
-          document.getElementById('results').innerHTML = '<p class="bad">Split mode requires Trail offsets &gt; 0 (at least one non-zero) and Point Value &gt; 0.</p>';
-          return;
-        }
-        const rawSize  = riskAmountTotal / (pointValue * riskDistCombined);
-        const sizeTot  = roundToStep(rawSize, lotStep, minLot);
-
+        // ============== PARTIAL TP MODE (split into two legs) ==============
+        const f = tp1Percent / 100;
         const sizeLeg1 = roundToStep(sizeTot * f, lotStep, minLot);
         const sizeLeg2 = roundToStep(Math.max(sizeTot - sizeLeg1, 0), lotStep, minLot);
 
-        const riskLeg1 = sizeLeg1 * pointValue * trail1Off;
-        const riskLeg2 = sizeLeg2 * pointValue * trail2Off;
+        const riskLeg1 = sizeLeg1 * pointValue * stopDist;
+        const riskLeg2 = sizeLeg2 * pointValue * stopDist;
 
         const notional1 = sizeLeg1 * entryPrice;
         const notional2 = sizeLeg2 * entryPrice;
@@ -333,13 +306,12 @@
 
         ticket = [
           `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt3(entryPrice)} | ATR ${fmt3(atr)}`,
-          `Size total ${fmt(sizeTot,4)} lots | Risk ${fmt2(riskAmountTotal)} (${fmt2(riskPct)}%)`,
-          `Leg1 ${fmt(sizeLeg1,4)} lots | TP1 ${fmt2(tp1Price)} | SL (with trailing offset): ${fmt2(leg1SLprice)}`,
-          `Leg2 ${fmt(sizeLeg2,4)} lots | TP2 ${fmt2(tp2Price)} | SL (with trailing offset): ${fmt2(leg2SLprice)}`,
-          `(Ref) Static SL×ATR: ${fmt2(stopPriceRef)}`
+          `Total Size ${fmt(sizeTot,4)} lots | Risk ${fmt2(riskAmountTotal)} (${fmt2(riskPct)}%)`,
+          `Standard SL: ${fmt3(stopPrice)} | TP1: ${fmt3(tp1Price)} | TP2: ${fmt3(tp2Price)}`,
+          `Leg1 ${fmt(sizeLeg1,4)} lots (${fmt(tp1Percent,0)}%) | Leg2 ${fmt(sizeLeg2,4)} lots (${fmt(100 - tp1Percent,0)}%)`
         ].join('\n');
 
-        const htmlSplit = `
+        html = `
           <div class="card">
             <h3>Summary</h3>
             <div class="row">
@@ -350,10 +322,8 @@
                 <p>Total Size: <b class="mono">${fmt(sizeTot,4)}</b> lots</p>
               </div>
               <div>
-                <p><b>Leg 1 — SL price (with trailing offset):</b> <span class="mono">${fmt2(leg1SLprice)}</span></p>
-                <p><b>Leg 2 — SL price (with trailing offset):</b> <span class="mono">${fmt2(leg2SLprice)}</span></p>
-                <p class="muted">(Ref) Static SL×ATR: <span class="mono">${fmt2(stopPriceRef)}</span></p>
-                <p>TP1: <b class="mono">${fmt2(tp1Price)}</b> &nbsp;|&nbsp; TP2: <b class="mono">${fmt2(tp2Price)}</b></p>
+                <p><b>Standard SL price:</b> <span class="mono">${fmt3(stopPrice)}</span></p>
+                <p>TP1: <b class="mono">${fmt3(tp1Price)}</b> &nbsp;|&nbsp; TP2: <b class="mono">${fmt3(tp2Price)}</b></p>
               </div>
             </div>
           </div>
@@ -368,8 +338,9 @@
                 <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt2(margin1)}</b></p>
               </div>
               <div>
-                <p>TP1 Price: <b class="mono">${fmt2(tp1Price)}</b></p>
-                <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt2(leg1SLprice)}</span></p>
+                <p>Entry: <b class="mono">${fmt3(entryPrice)}</b></p>
+                <p>SL: <b class="mono">${fmt3(stopPrice)}</b></p>
+                <p>TP1: <b class="mono">${fmt3(tp1Price)}</b></p>
               </div>
             </div>
           </div>
@@ -384,8 +355,9 @@
                 <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt2(margin2)}</b></p>
               </div>
               <div>
-                <p>TP2 Price: <b class="mono">${fmt2(tp2Price)}</b></p>
-                <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt2(leg2SLprice)}</span></p>
+                <p>Entry: <b class="mono">${fmt3(entryPrice)}</b></p>
+                <p>SL: <b class="mono">${fmt3(stopPrice)}</b></p>
+                <p>TP2: <b class="mono">${fmt3(tp2Price)}</b></p>
               </div>
             </div>
           </div>
@@ -393,10 +365,10 @@
           <div class="card">
             <h3>Broker Ticket (copy/paste)</h3>
             <pre class="mono">${ticket}</pre>
-            <p class="muted">Most platforms trail from the distance defined by this initial SL price. If your platform trails only after the trade is in profit, these prices still serve as your protective stops.</p>
+            <p class="muted">No trailing/offsets shown. Place a standard trailing stop at your broker if desired; sizing uses static SL × ATR.</p>
           </div>
         `;
-        document.getElementById('results').innerHTML = htmlSplit;
+        document.getElementById('results').innerHTML = html;
       }
     }
 
