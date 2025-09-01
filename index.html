@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gold Trade Calculator — Standard SL/TP (No Offsets)</title>
+  <title>GOLD Trade Calculator — Standard SL/TP (No Offsets)</title>
   <style>
     body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.35;margin:24px;color:#111}
     h2{margin:0 0 12px}
@@ -23,17 +23,17 @@
   </style>
 </head>
 <body>
-  <h2>Gold Trade Calculator — 10:30 to 13:30 (Standard SL/TP)</h2>
+  <h2>GOLD Trade Calculator — 10:30 to 13:30 (Standard SL/TP)</h2>
 
   <form id="tradeForm" onsubmit="event.preventDefault();calculateTrade();">
     <fieldset>
       <legend>Market & Account</legend>
       <div class="row">
         <label>Entry Price
-          <input type="number" id="entryPrice" step="0.001" required />
+          <input type="number" id="entryPrice" step="0.00001" required />
         </label>
         <label>ATR
-          <input type="number" id="atr" step="0.001" required />
+          <input type="number" id="atr" step="0.00001" required />
         </label>
         <label>Account Balance
           <input type="number" id="accountBalance" step="0.01" required />
@@ -149,7 +149,7 @@
     }
     function fmt(v, d=2){ return isFinite(v) ? v.toFixed(d) : "—"; }
     const fmt2 = (v)=>fmt(v,2);
-    const fmt3 = (v)=>fmt(v,3);
+    const fmt5 = (v)=>fmt(v,5); // five decimals for price/ATR/SL/TP
 
     // --- UI toggles ---
     function setDisplay(id, show){ const el = document.getElementById(id); if(el){ el.style.display = show ? '' : 'none'; } }
@@ -219,7 +219,7 @@
 
       const isLong       = (tradeDirection === 'long');
 
-      // Standard SL/TP prices (3dp)
+      // Standard SL/TP prices (now 5dp)
       const stopPrice    = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist);
       const tp1Price     = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
       const tp2Price     = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
@@ -244,9 +244,9 @@
       if (partialTP === 'off') {
         // ============== SINGLE MODE (no split) ==============
         ticket = [
-          `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt3(entryPrice)} | ATR ${fmt3(atr)}`,
+          `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt5(entryPrice)} | ATR ${fmt5(atr)}`,
           `Size ${fmt(sizeTot,4)} lots | Risk ${fmt2(riskAmountTotal)} (${fmt2(riskPct)}%)`,
-          `Standard SL: ${fmt3(stopPrice)} | Standard TP: ${fmt3(singleTP)}`
+          `Standard SL: ${fmt5(stopPrice)} | Standard TP: ${fmt5(singleTP)}`
         ].join('\n');
 
         html = `
@@ -255,13 +255,13 @@
             <div class="row">
               <div>
                 <p>Direction: <b>${isLong ? 'LONG' : 'SHORT'}</b></p>
-                <p>ATR: <b>${fmt3(atr)}</b></p>
+                <p>ATR: <b>${fmt5(atr)}</b></p>
                 <p>Total Risk: <b>${fmt2(riskAmountTotal)}</b> (${fmt2(riskPct)}%)</p>
                 <p>Total Size: <b class="mono">${fmt(sizeTot,4)}</b> lots</p>
               </div>
               <div>
-                <p><b>Standard SL price:</b> <span class="mono">${fmt3(stopPrice)}</span></p>
-                <p><b>Standard TP price:</b> <span class="mono">${fmt3(singleTP)}</span></p>
+                <p><b>Standard SL price:</b> <span class="mono">${fmt5(stopPrice)}</span></p>
+                <p><b>Standard TP price:</b> <span class="mono">${fmt5(singleTP)}</span></p>
               </div>
             </div>
           </div>
@@ -275,9 +275,9 @@
                 <p>Risk (approx): <b>${fmt2(riskTot)}</b></p>
               </div>
               <div>
-                <p>Entry: <b class="mono">${fmt3(entryPrice)}</b></p>
-                <p>SL: <b class="mono">${fmt3(stopPrice)}</b></p>
-                <p>TP: <b class="mono">${fmt3(singleTP)}</b></p>
+                <p>Entry: <b class="mono">${fmt5(entryPrice)}</b></p>
+                <p>SL: <b class="mono">${fmt5(stopPrice)}</b></p>
+                <p>TP: <b class="mono">${fmt5(singleTP)}</b></p>
               </div>
             </div>
           </div>
@@ -305,9 +305,9 @@
         const margin2   = leverage > 0 ? (notional2 / leverage) : 0;
 
         ticket = [
-          `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt3(entryPrice)} | ATR ${fmt3(atr)}`,
+          `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt5(entryPrice)} | ATR ${fmt5(atr)}`,
           `Total Size ${fmt(sizeTot,4)} lots | Risk ${fmt2(riskAmountTotal)} (${fmt2(riskPct)}%)`,
-          `Standard SL: ${fmt3(stopPrice)} | TP1: ${fmt3(tp1Price)} | TP2: ${fmt3(tp2Price)}`,
+          `Standard SL: ${fmt5(stopPrice)} | TP1: ${fmt5(tp1Price)} | TP2: ${fmt5(tp2Price)}`,
           `Leg1 ${fmt(sizeLeg1,4)} lots (${fmt(tp1Percent,0)}%) | Leg2 ${fmt(sizeLeg2,4)} lots (${fmt(100 - tp1Percent,0)}%)`
         ].join('\n');
 
@@ -317,13 +317,13 @@
             <div class="row">
               <div>
                 <p>Direction: <b>${isLong ? 'LONG' : 'SHORT'}</b></p>
-                <p>ATR: <b>${fmt3(atr)}</b></p>
+                <p>ATR: <b>${fmt5(atr)}</b></p>
                 <p>Total Risk: <b>${fmt2(riskAmountTotal)}</b> (${fmt2(riskPct)}%)</p>
                 <p>Total Size: <b class="mono">${fmt(sizeTot,4)}</b> lots</p>
               </div>
               <div>
-                <p><b>Standard SL price:</b> <span class="mono">${fmt3(stopPrice)}</span></p>
-                <p>TP1: <b class="mono">${fmt3(tp1Price)}</b> &nbsp;|&nbsp; TP2: <b class="mono">${fmt3(tp2Price)}</b></p>
+                <p><b>Standard SL price:</b> <span class="mono">${fmt5(stopPrice)}</span></p>
+                <p>TP1: <b class="mono">${fmt5(tp1Price)}</b> &nbsp;|&nbsp; TP2: <b class="mono">${fmt5(tp2Price)}</b></p>
               </div>
             </div>
           </div>
@@ -338,9 +338,9 @@
                 <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt2(margin1)}</b></p>
               </div>
               <div>
-                <p>Entry: <b class="mono">${fmt3(entryPrice)}</b></p>
-                <p>SL: <b class="mono">${fmt3(stopPrice)}</b></p>
-                <p>TP1: <b class="mono">${fmt3(tp1Price)}</b></p>
+                <p>Entry: <b class="mono">${fmt5(entryPrice)}</b></p>
+                <p>SL: <b class="mono">${fmt5(stopPrice)}</b></p>
+                <p>TP1: <b class="mono">${fmt5(tp1Price)}</b></p>
               </div>
             </div>
           </div>
@@ -355,9 +355,9 @@
                 <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt2(margin2)}</b></p>
               </div>
               <div>
-                <p>Entry: <b class="mono">${fmt3(entryPrice)}</b></p>
-                <p>SL: <b class="mono">${fmt3(stopPrice)}</b></p>
-                <p>TP2: <b class="mono">${fmt3(tp2Price)}</b></p>
+                <p>Entry: <b class="mono">${fmt5(entryPrice)}</b></p>
+                <p>SL: <b class="mono">${fmt5(stopPrice)}</b></p>
+                <p>TP2: <b class="mono">${fmt5(tp2Price)}</b></p>
               </div>
             </div>
           </div>
@@ -382,6 +382,21 @@
   </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
