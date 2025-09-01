@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -101,6 +100,13 @@
     <fieldset>
       <legend>Split & Trailing</legend>
       <div class="row">
+        <!-- NEW: execution mode -->
+        <label>Execution Mode
+          <select id="execMode" onchange="updateModeUI()">
+            <option value="split" selected>Split (TP1 + TP2)</option>
+            <option value="single">Single (use TP2 &amp; Trail2 only)</option>
+          </select>
+        </label>
         <label>TP1 % of Position
           <input type="number" id="tp1Percent" step="1" value="60" />
         </label>
@@ -138,6 +144,17 @@
     }
     function fmt(v, d=2){ return isFinite(v) ? v.toFixed(d) : "—"; }
 
+    // --- NEW: small helper to hide/show TP1 controls in Single mode
+    function updateModeUI(){
+      const mode = document.getElementById('execMode')?.value || 'split';
+      const tp1Group   = document.getElementById('tp1Percent')?.closest('label');
+      const trail1Group= document.getElementById('trail1Mult')?.closest('label');
+      const hideTP1 = (mode === 'single');
+      if (tp1Group)    tp1Group.style.display    = hideTP1 ? 'none' : '';
+      if (trail1Group) trail1Group.style.display = hideTP1 ? 'none' : '';
+    }
+    document.addEventListener('DOMContentLoaded', updateModeUI);
+
     function calculateTrade() {
       const entryPrice     = parseFloat(document.getElementById('entryPrice').value);
       const atr            = parseFloat(document.getElementById('atr').value);
@@ -153,146 +170,11 @@
       const tp1Mult  = parseFloat(document.getElementById('tp1Mult').value);
       const tp2Mult  = parseFloat(document.getElementById('tp2Mult').value);
 
+      const execMode   = (document.getElementById('execMode')?.value || 'split'); // 'split' | 'single'
       const tp1Percent = parseFloat(document.getElementById('tp1Percent').value);
       const trail1Mult = parseFloat(document.getElementById('trail1Mult').value);
       const trail2Mult = parseFloat(document.getElementById('trail2Mult').value);
 
-      const baseRiskPct   = parseFloat(document.getElementById('riskPct').value);
-      const useScoreScale = document.getElementById('useScoreScale').value === "on";
-      const score         = Math.abs(parseFloat(document.getElementById('score').value));
-
-      if ([entryPrice, atr, accountBalance, leverage].some(v => !isFinite(v) || v <= 0)){
-        document.getElementById('results').innerHTML = '<p class="bad">Please fill all required inputs with valid numbers > 0.</p>';
-        return;
-      }
-      if (tp1Percent <= 0 || tp1Percent >= 100){
-        document.getElementById('results').innerHTML = '<p class="bad">TP1 % must be between 1 and 99.</p>';
-        return;
-      }
-
-      // Risk % (optionally scaled)
-      const riskPct = useScoreScale ? riskFromScore(baseRiskPct, score) : baseRiskPct;
-      const riskAmountTotal = accountBalance * (riskPct / 100);
-
-      // Distances (price units)
-      const stopDist  = atr * slMult;             // ref only
-      const tp1Dist   = atr * tp1Mult;
-      const tp2Dist   = atr * tp2Mult;
-      const trail1Off = atr * trail1Mult;         // trailing gap L1
-      const trail2Off = atr * trail2Mult;         // trailing gap L2
-
-      // Prices
-      const isLong = (tradeDirection === 'long');
-      const stopPriceRef = isLong ? (entryPrice - stopDist) : (entryPrice + stopDist); // reference
-      const tp1Price     = isLong ? (entryPrice + tp1Dist)  : (entryPrice - tp1Dist);
-      const tp2Price     = isLong ? (entryPrice + tp2Dist)  : (entryPrice - tp2Dist);
-
-      // SL price (with trailing offset) — this is what you ENTER at the broker with "Trailing" ticked
-      const leg1SLprice = isLong ? (entryPrice - trail1Off) : (entryPrice + trail1Off);
-      const leg2SLprice = isLong ? (entryPrice - trail2Off) : (entryPrice + trail2Off);
-
-      // --- Size using trailing gaps (matches true broker risk) ---
-      const f = tp1Percent / 100; // split fraction
-      const riskDistCombined = (f * trail1Off) + ((1 - f) * trail2Off);
-      const rawSize = (pointValue > 0 && riskDistCombined > 0)
-        ? (riskAmountTotal / (pointValue * riskDistCombined))
-        : 0;
-      const sizeTotal = roundToStep(rawSize, lotStep, minLot);
-
-      // Split & rounding
-      const sizeLeg1 = roundToStep(sizeTotal * f, lotStep, minLot);
-      const sizeLeg2 = roundToStep(Math.max(sizeTotal - sizeLeg1, 0), lotStep, minLot);
-
-      // Risk per leg (using each leg’s trailing gap)
-      const riskLeg1 = sizeLeg1 * pointValue * trail1Off;
-      const riskLeg2 = sizeLeg2 * pointValue * trail2Off;
-
-      // Notional & margin (approx)
-      const notional1 = sizeLeg1 * entryPrice;
-      const notional2 = sizeLeg2 * entryPrice;
-      const margin1   = leverage > 0 ? (notional1 / leverage) : 0;
-      const margin2   = leverage > 0 ? (notional2 / leverage) : 0;
-
-      // Copyable broker ticket
-      const ticket = [
-        `DIR: ${isLong ? 'LONG' : 'SHORT'} | Entry ${fmt(entryPrice,2)} | ATR ${fmt(atr,2)}`,
-        `Size total ${fmt(sizeTotal,4)} lots | Risk ${fmt(riskAmountTotal,2)} (${fmt(riskPct,2)}%)`,
-        `Leg1 ${fmt(sizeLeg1,4)} lots | TP1 ${fmt(tp1Price,2)} | SL (with trailing offset): ${fmt(leg1SLprice,2)}`,
-        `Leg2 ${fmt(sizeLeg2,4)} lots | TP2 ${fmt(tp2Price,2)} | SL (with trailing offset): ${fmt(leg2SLprice,2)}`,
-        `(Ref) Static SL×ATR: ${fmt(stopPriceRef,2)}`
-      ].join('\n');
-
-      // Render
-      const html = `
-        <div class="card">
-          <h3>Summary</h3>
-          <div class="row">
-            <div>
-              <p>Direction: <b>${isLong ? 'LONG' : 'SHORT'}</b></p>
-              <p>ATR: <b>${fmt(atr,2)}</b></p>
-              <p>Total Risk: <b>${fmt(riskAmountTotal,2)}</b> (${fmt(riskPct,2)}%)</p>
-              <p>Total Size: <b class="mono">${fmt(sizeTotal,4)}</b> lots</p>
-            </div>
-            <div>
-              <p><b>Leg 1 — SL price (with trailing offset):</b> <span class="mono">${fmt(leg1SLprice,2)}</span></p>
-              <p><b>Leg 2 — SL price (with trailing offset):</b> <span class="mono">${fmt(leg2SLprice,2)}</span></p>
-              <p class="muted">(Ref) Static SL×ATR: <span class="mono">${fmt(stopPriceRef,2)}</span></p>
-              <p>TP1: <b class="mono">${fmt(tp1Price,2)}</b> &nbsp;|&nbsp; TP2: <b class="mono">${fmt(tp2Price,2)}</b></p>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3>Leg 1 (TP1 ${fmt(tp1Percent,0)}%)</h3>
-          <div class="row">
-            <div>
-              <p>Size: <b class="mono">${fmt(sizeLeg1,4)}</b> lots</p>
-              <p>Risk (approx): <b>${fmt(riskLeg1,2)}</b></p>
-              <p>Notional: <b>${fmt(notional1,2)}</b></p>
-              <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt(margin1,2)}</b></p>
-            </div>
-            <div>
-              <p>TP1 Price: <b class="mono">${fmt(tp1Price,2)}</b></p>
-              <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt(leg1SLprice,2)}</span></p>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3>Leg 2 (TP2 ${fmt(100 - tp1Percent,0)}%)</h3>
-          <div class="row">
-            <div>
-              <p>Size: <b class="mono">${fmt(sizeLeg2,4)}</b> lots</p>
-              <p>Risk (approx): <b>${fmt(riskLeg2,2)}</b></p>
-              <p>Notional: <b>${fmt(notional2,2)}</b></p>
-              <p>Margin @ ${fmt(leverage,0)}×: <b>${fmt(margin2,2)}</b></p>
-            </div>
-            <div>
-              <p>TP2 Price: <b class="mono">${fmt(tp2Price,2)}</b></p>
-              <p><b>SL price (with trailing offset):</b> <span class="mono">${fmt(leg2SLprice,2)}</span></p>
-            </div>
-          </div>
-        </div>
-
-        <div class="card">
-          <h3>Broker Ticket (copy/paste)</h3>
-          <pre class="mono">${ticket}</pre>
-          <p class="muted">Most platforms trail from the distance defined by this initial SL price. If your platform trails only after the trade is in profit, these prices still serve as your protective stops.</p>
-        </div>
-      `;
-      document.getElementById('results').innerHTML = html;
-    }
-
-    function copyResults(){
-      const el = document.getElementById('results');
-      if(!el || !el.innerText){return;}
-      navigator.clipboard.writeText(el.innerText)
-        .then(()=>{document.getElementById('copyStatus').textContent="Copied!"; setTimeout(()=>{document.getElementById('copyStatus').textContent="";},1500);})
-        .catch(()=>{document.getElementById('copyStatus').textContent="Copy failed";});
-    }
-  </script>
-</body>
-</html>
 
 
 
